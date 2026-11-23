@@ -21,6 +21,7 @@ let output;               // output channel "PBC+"
 let emulator = null;      // running PBConPC process
 let diagnostics;          // hints about common pitfalls
 const statusItems = [];
+let runButton = null;
 
 // ---------------------------------------------------------------- helpers
 
@@ -123,6 +124,12 @@ async function trusted() {
 
 // ---------------------------------------------------------------- finding PBConPC
 
+// Is PBConPC there, without asking? (for the status bar)
+function pbconpcFound() {
+    const configured = setting('pbconpcPath');
+    return configured ? fs.existsSync(configured) : !!onPath('pbconpc');
+}
+
 async function pbconpcPath(ask = true) {
     const configured = setting('pbconpcPath');
     if (configured) {
@@ -133,10 +140,11 @@ async function pbconpcPath(ask = true) {
         if (found) return found;
     }
     if (!ask) return null;
-    const choose = t('Choose program');
+    const choose = t('I have it: choose program');
     const download = t('Download PBConPC');
     const choice = await vscode.window.showInformationMessage(
-        t('Where is PBConPC? On Windows it is pbconpc.exe from the unpacked ZIP.'), choose, download);
+        t('This needs PBConPC, the free emulator for the PBC+ (Windows, Linux). It was not found on this computer. Download it, or choose the program if you already have it – on Windows that is pbconpc.exe from the unpacked ZIP.'),
+        download, choose);
     if (choice === download) {
         vscode.env.openExternal(vscode.Uri.parse(pbconpcPage()));
         return null;
@@ -154,6 +162,7 @@ async function choosePbconpc() {
     const p = file[0].fsPath;
     await vscode.workspace.getConfiguration('pbcplus').update('pbconpcPath', p, vscode.ConfigurationTarget.Global);
     vscode.window.showInformationMessage(t('PBConPC: {0}', p));
+    updateStatusBar();
     return p;
 }
 
@@ -699,6 +708,11 @@ function check(doc) {
 function updateStatusBar() {
     const show = isPbcProject(rootFolder());
     for (const s of statusItems) show ? s.show() : s.hide();
+    if (runButton) {
+        const found = pbconpcFound();
+        runButton.text = (found ? '$(play)' : '$(cloud-download)') + ' PBConPC';
+        runButton.tooltip = found ? t('Build and run in PBConPC') : t('PBConPC is not installed yet. Click to download it.');
+    }
     vscode.commands.executeCommand('setContext', 'pbcplus.project', show);
 }
 
@@ -728,11 +742,17 @@ function activate(context) {
         s.text = text; s.command = command; s.tooltip = tooltip;
         statusItems.push(s);
         context.subscriptions.push(s);
+        return s;
     };
-    button('$(play) PBConPC', 'pbcplus.run', t('Build and run in PBConPC'), 9);
+    runButton = button('$(play) PBConPC', 'pbcplus.run', t('Build and run in PBConPC'), 9);
     button('$(debug-alt) ' + t('Debug'), 'pbcplus.debug', t('Build and debug in PBConPC'), 8);
     updateStatusBar();
     context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(updateStatusBar));
+    // after installing PBConPC: check again when the window gets the focus back
+    context.subscriptions.push(vscode.window.onDidChangeWindowState(w => { if (w.focused) updateStatusBar(); }));
+    context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
+        if (e.affectsConfiguration('pbcplus.pbconpcPath')) updateStatusBar();
+    }));
 
     context.subscriptions.push(vscode.languages.registerHoverProvider(
         [{ language: 'c' }, { language: 'cpp' }], { provideHover: pinHover }));

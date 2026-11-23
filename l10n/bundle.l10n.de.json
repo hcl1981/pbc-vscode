@@ -2,9 +2,7 @@
   "PBConPC does not respond": "PBConPC antwortet nicht",
   "PBConPC has exited": "PBConPC wurde beendet",
   "PBConPC not found: {0}": "PBConPC nicht gefunden: {0}",
-  "Choose program": "Programm auswählen",
   "Download PBConPC": "PBConPC herunterladen",
-  "Where is PBConPC? On Windows it is pbconpc.exe from the unpacked ZIP.": "Wo liegt PBConPC? Unter Windows ist es die Datei pbconpc.exe aus dem entpackten ZIP.",
   "Use PBConPC": "PBConPC verwenden",
   "Choose PBConPC": "PBConPC auswählen",
   "PBConPC: {0}": "PBConPC: {0}",
@@ -61,5 +59,8 @@
   "Build and debug in PBConPC": "Bauen und im PBConPC debuggen",
   "Trust folder": "Ordner vertrauen",
   "VS Code is in Restricted Mode. Building, running and debugging need a trusted folder.": "VS Code ist im eingeschränkten Modus. Bauen, Starten und Debuggen gehen nur in einem vertrauenswürdigen Ordner.",
-  "Project \"{0}\" created. Trust the folder when VS Code asks, then import it.": "Projekt „{0}“ angelegt. Vertraue dem Ordner, wenn VS Code fragt, und importiere es dann."
+  "Project \"{0}\" created. Trust the folder when VS Code asks, then import it.": "Projekt „{0}“ angelegt. Vertraue dem Ordner, wenn VS Code fragt, und importiere es dann.",
+  "I have it: choose program": "Habe ich schon: Programm auswählen",
+  "This needs PBConPC, the free emulator for the PBC+ (Windows, Linux). It was not found on this computer. Download it, or choose the program if you already have it – on Windows that is pbconpc.exe from the unpacked ZIP.": "Dafür braucht es PBConPC, den kostenlosen Emulator für den PBC+ (Windows, Linux). Er wurde auf diesem Rechner nicht gefunden. Lade ihn herunter oder wähle das Programm, falls du es schon hast – unter Windows ist das pbconpc.exe aus dem entpackten ZIP.",
+  "PBConPC is not installed yet. Click to download it.": "PBConPC ist noch nicht installiert – zum Herunterladen klicken."
 }

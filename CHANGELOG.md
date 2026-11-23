@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.3
+
+- If PBConPC is not installed, the status bar button shows a download icon,
+  and the message explains what PBConPC is and where to get it.
+
 ## 0.2.2
 
 - Publisher is now `hcl1981` (as in the VS Code Marketplace). The extension ID
