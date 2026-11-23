@@ -1,0 +1,50 @@
+{
+  "PBC+ Programm": {
+    "prefix": "pbc-programm",
+    "description": "Gerüst für ein PBC+-Programm mit Hauptschleife",
+    "body": [
+      "#include \"pbc.h\"",
+      "",
+      "int main(void) {",
+      "    pbc_init();",
+      "",
+      "    while (true) {",
+      "        pbc_clear(PBC_BLACK);",
+      "        ${1:// zeichnen}",
+      "        pbc_show();",
+      "        sleep_ms(${2:20});",
+      "    }",
+      "}"
+    ]
+  },
+  "PBC+ Taste": {
+    "prefix": "pbc-taste",
+    "description": "Auf einen Tastendruck reagieren (einmal je Drücken)",
+    "body": [
+      "if (pbc_was_pressed_${1|a,b,up,down,left,right,center|}()) {",
+      "    $0",
+      "}"
+    ]
+  },
+  "PBC+ Text": {
+    "prefix": "pbc-text",
+    "description": "Text auf den Bildschirm schreiben",
+    "body": [
+      "pbc_text${1|18,12,24|}(\"${2:Hallo}\", ${3:10}, ${4:10}, PBC_${5|WHITE,BLACK,RED,GREEN,BLUE,YELLOW,CYAN,MAGENTA,ORANGE,PURPLE,GRAY|});"
+    ]
+  },
+  "PBC+ Ton": {
+    "prefix": "pbc-ton",
+    "description": "Einen Ton spielen (wartet nicht)",
+    "body": [
+      "pbc_tone(${1:440}, ${2:200});"
+    ]
+  },
+  "PBC+ LEDs": {
+    "prefix": "pbc-led",
+    "description": "Eine der drei LEDs schalten",
+    "body": [
+      "pbc_led_${1|red,yellow,green|}(${2|true,false|});"
+    ]
+  }
+}
