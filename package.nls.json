@@ -13,5 +13,6 @@
   "config.usbTerminal": "Show a terminal next to the screen in the PBConPC window, with everything the program prints with `printf`.",
   "config.exactTiming": "Device-accurate timing for display and sensor when running (`--exact-bus`). Slower, but closer to the PBC+. The profiler always measures this way.",
   "config.hideDebugBuildHint": "Do not remind about \"set(CMAKE_BUILD_TYPE Debug)\" before debugging.",
-  "config.templateUrl": "Where the project template is downloaded from. Without internet the extension uses its bundled copy."
+  "config.templateUrl": "Where the project template is downloaded from. Without internet the extension uses its bundled copy.",
+  "capabilities.untrusted": "In Restricted Mode you can create a new project and use the editor help. Building, running and debugging need a trusted folder."
 }

@@ -111,6 +111,16 @@ function waitForOutput(p, text, ms) {
     });
 }
 
+// Building and running execute code from the folder: only in a trusted one.
+async function trusted() {
+    if (vscode.workspace.isTrusted) return true;
+    const manage = t('Trust folder');
+    const choice = await vscode.window.showWarningMessage(
+        t('VS Code is in Restricted Mode. Building, running and debugging need a trusted folder.'), manage);
+    if (choice === manage) vscode.commands.executeCommand('workbench.trust.manage');
+    return false;
+}
+
 // ---------------------------------------------------------------- finding PBConPC
 
 async function pbconpcPath(ask = true) {
@@ -275,6 +285,7 @@ function baseArgs() {
 }
 
 async function run() {
+    if (!await trusted()) return;
     const program = await pbconpcPath();
     if (!program) return;
     const b = await build();
@@ -307,6 +318,7 @@ async function toolchainDir() {
 }
 
 async function debug() {
+    if (!await trusted()) return;
     if (!hasExtension(CORTEX)) {
         const install = t('Install Cortex-Debug');
         const choice = await vscode.window.showErrorMessage(
@@ -499,6 +511,7 @@ document.addEventListener('click', e => {
 }
 
 async function profile() {
+    if (!await trusted()) return;
     const program = await pbconpcPath();
     if (!program) return;
     const folder = rootFolder();
@@ -614,6 +627,13 @@ async function newProject(context) {
     }
     log(`New project ${target}, template: ${source}`);
     const uri = vscode.Uri.file(target);
+    if (!vscode.workspace.isTrusted) {
+        // In Restricted Mode the Pico extension is switched off: open the new
+        // folder; VS Code asks whether to trust it, then the import hint follows.
+        vscode.window.showInformationMessage(t('Project "{0}" created. Trust the folder when VS Code asks, then import it.', name));
+        vscode.commands.executeCommand('vscode.openFolder', uri);
+        return;
+    }
     if (hasExtension(PICO)) {
         vscode.window.showInformationMessage(
             t('Project "{0}" created. Now import it once: choose SDK version 2.2.0 and click "Import".', name));
@@ -683,6 +703,7 @@ function updateStatusBar() {
 }
 
 function importHint() {
+    if (!vscode.workspace.isTrusted) return;
     const folder = rootFolder();
     if (!folder || !isPbcProject(folder) || !hasExtension(PICO)) return;
     if (fs.existsSync(path.join(folder.uri.fsPath, '.vscode', 'tasks.json'))) return;
@@ -721,6 +742,7 @@ function activate(context) {
     context.subscriptions.push(vscode.workspace.onDidCloseTextDocument(d => diagnostics.delete(d.uri)));
     vscode.workspace.textDocuments.forEach(check);
     importHint();
+    context.subscriptions.push(vscode.workspace.onDidGrantWorkspaceTrust(importHint));
 }
 
 function deactivate() {

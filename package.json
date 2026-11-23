@@ -2,7 +2,7 @@
   "name": "pbcplus",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "pbcplus",
   "author": "Jan Schulz",
   "license": "MIT",
@@ -30,9 +30,6 @@
     "RP2350",
     "Pico SDK",
     "Raspberry Pi Pico"
-  ],
-  "extensionDependencies": [
-    "raspberry-pi.raspberry-pi-pico"
   ],
   "main": "./extension.js",
   "activationEvents": [
@@ -145,5 +142,20 @@
       }
     }
   },
-  "l10n": "./l10n"
+  "l10n": "./l10n",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "%capabilities.untrusted%",
+      "restrictedConfigurations": [
+        "pbcplus.pbconpcPath",
+        "pbcplus.gdbPath",
+        "pbcplus.templateUrl"
+      ]
+    },
+    "virtualWorkspaces": false
+  },
+  "extensionPack": [
+    "raspberry-pi.raspberry-pi-pico"
+  ]
 }

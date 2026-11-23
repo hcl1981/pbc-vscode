@@ -58,5 +58,8 @@
   "This PBC+ project is not set up for the Raspberry Pi Pico extension yet.": "Dieses PBC+-Projekt ist noch nicht für die Raspberry-Pi-Pico-Erweiterung eingerichtet.",
   "Build and run in PBConPC": "Bauen und im PBConPC starten",
   "Debug": "Debuggen",
-  "Build and debug in PBConPC": "Bauen und im PBConPC debuggen"
+  "Build and debug in PBConPC": "Bauen und im PBConPC debuggen",
+  "Trust folder": "Ordner vertrauen",
+  "VS Code is in Restricted Mode. Building, running and debugging need a trusted folder.": "VS Code ist im eingeschränkten Modus. Bauen, Starten und Debuggen gehen nur in einem vertrauenswürdigen Ordner.",
+  "Project \"{0}\" created. Trust the folder when VS Code asks, then import it.": "Projekt „{0}“ angelegt. Vertraue dem Ordner, wenn VS Code fragt, und importiere es dann."
 }

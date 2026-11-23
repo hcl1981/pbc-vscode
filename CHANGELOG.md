@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1
+
+- Works in Restricted Mode: a new project and the editor help are available;
+  building, running and debugging offer to trust the folder.
+- The Raspberry Pi Pico extension is still installed along with it, but is no
+  longer required to start.
+
 ## 0.2.0
 
 - English user interface; German when VS Code runs in German.

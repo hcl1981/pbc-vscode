@@ -42,7 +42,7 @@ auf, die sich um SDK, Compiler und das Aufspielen auf den PBC+ kümmert.
 2. In VS Code links die **Erweiterungen** öffnen, oben auf **…** klicken und
    **Aus VSIX installieren…** wählen. Oder die Datei in die Liste der
    Erweiterungen ziehen. Oder im Terminal:
-   `code --install-extension pbcplus-0.2.0.vsix`
+   `code --install-extension pbcplus-0.2.1.vsix`
    Die Erweiterung *Raspberry Pi Pico* kommt dabei automatisch mit; dafür
    braucht es einmal Internet.
 3. [PBConPC installieren](https://pbcplus.de/geraet/am-pc/). Unter Linux mit
@@ -69,6 +69,9 @@ Eine neue Fassung installierst du genauso; die alte wird dabei ersetzt.
 - Auf den PBC+ selbst spielst du dein Programm wie gewohnt mit der
   Pico-Erweiterung auf (**Run** in der Statusleiste) oder kopierst die `.uf2`
   im BOOT-Modus auf das Laufwerk.
+- Im eingeschränkten Modus (Restricted Mode, Ordner ohne Vertrauen) gehen nur
+  „Neues Projekt“ und die Hilfen im Editor. Zum Bauen, Starten und Debuggen
+  unten links auf **Restricted Mode** klicken und dem Ordner vertrauen.
 - PBConPC gibt es für Windows, Linux und Android, für den Mac noch nicht.
   Ohne PBConPC funktionieren nur die Projektvorlage und die Hilfen im Editor.
 

@@ -40,7 +40,7 @@ extension, which takes care of the SDK, the compiler and flashing the PBC+.
    [releases](https://github.com/hcl1981/pbc-vscode/releases/latest).
 2. In VS Code open **Extensions**, click **…** at the top and choose
    **Install from VSIX…**. Or drag the file onto the extensions list. Or in a
-   terminal: `code --install-extension pbcplus-0.2.0.vsix`
+   terminal: `code --install-extension pbcplus-0.2.1.vsix`
    The *Raspberry Pi Pico* extension is installed along with it; this needs
    internet once.
 3. [Install PBConPC](https://github.com/hcl1981/PBConPC/releases/latest). On
@@ -66,6 +66,9 @@ To update, install the new version the same way; it replaces the old one.
 
 - To put your program on the PBC+ itself, use the Pico extension as usual
   (**Run** in the status bar) or copy the `.uf2` to the drive in BOOT mode.
+- In Restricted Mode (an untrusted folder) only the new-project command and
+  the editor help work. Click **Restricted Mode** in the status bar and trust
+  the folder to build, run and debug.
 - PBConPC is available for Windows, Linux and Android, not yet for the Mac.
   Without PBConPC only the project template and the editor help work.
 

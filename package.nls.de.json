@@ -13,5 +13,6 @@
   "config.usbTerminal": "Im PBConPC-Fenster neben dem Bildschirm ein Terminal zeigen: Dort erscheint, was das Programm mit `printf` ausgibt.",
   "config.exactTiming": "Beim Starten gerätegenaue Zeiten für Display und Sensor (`--exact-bus`). Langsamer, aber näher am PBC+. Der Profiler misst immer so.",
   "config.hideDebugBuildHint": "Vor dem Debuggen nicht mehr an „set(CMAKE_BUILD_TYPE Debug)“ erinnern.",
-  "config.templateUrl": "Woher die Projektvorlage geladen wird. Ohne Internet nimmt die Erweiterung ihre mitgelieferte Fassung."
+  "config.templateUrl": "Woher die Projektvorlage geladen wird. Ohne Internet nimmt die Erweiterung ihre mitgelieferte Fassung.",
+  "capabilities.untrusted": "Im eingeschränkten Modus gehen ein neues Projekt und die Hilfen im Editor. Bauen, Starten und Debuggen brauchen einen vertrauenswürdigen Ordner."
 }
