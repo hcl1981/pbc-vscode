@@ -1,7 +1,7 @@
 {
-  "PBC+ Programm": {
-    "prefix": "pbc-programm",
-    "description": "Gerüst für ein PBC+-Programm mit Hauptschleife",
+  "PBC+ program": {
+    "prefix": "pbc-main",
+    "description": "PBC+ program with a main loop",
     "body": [
       "#include \"pbc.h\"",
       "",
@@ -10,39 +10,39 @@
       "",
       "    while (true) {",
       "        pbc_clear(PBC_BLACK);",
-      "        ${1:// zeichnen}",
+      "        ${1:// draw}",
       "        pbc_show();",
       "        sleep_ms(${2:20});",
       "    }",
       "}"
     ]
   },
-  "PBC+ Taste": {
-    "prefix": "pbc-taste",
-    "description": "Auf einen Tastendruck reagieren (einmal je Drücken)",
+  "PBC+ button": {
+    "prefix": "pbc-button",
+    "description": "React to a button press (once per press)",
     "body": [
       "if (pbc_was_pressed_${1|a,b,up,down,left,right,center|}()) {",
       "    $0",
       "}"
     ]
   },
-  "PBC+ Text": {
+  "PBC+ text": {
     "prefix": "pbc-text",
-    "description": "Text auf den Bildschirm schreiben",
+    "description": "Write text on the screen",
     "body": [
-      "pbc_text${1|18,12,24|}(\"${2:Hallo}\", ${3:10}, ${4:10}, PBC_${5|WHITE,BLACK,RED,GREEN,BLUE,YELLOW,CYAN,MAGENTA,ORANGE,PURPLE,GRAY|});"
+      "pbc_text${1|18,12,24|}(\"${2:Hello}\", ${3:10}, ${4:10}, PBC_${5|WHITE,BLACK,RED,GREEN,BLUE,YELLOW,CYAN,MAGENTA,ORANGE,PURPLE,GRAY|});"
     ]
   },
-  "PBC+ Ton": {
-    "prefix": "pbc-ton",
-    "description": "Einen Ton spielen (wartet nicht)",
+  "PBC+ tone": {
+    "prefix": "pbc-tone",
+    "description": "Play a tone (does not wait)",
     "body": [
       "pbc_tone(${1:440}, ${2:200});"
     ]
   },
-  "PBC+ LEDs": {
+  "PBC+ LED": {
     "prefix": "pbc-led",
-    "description": "Eine der drei LEDs schalten",
+    "description": "Switch one of the three LEDs",
     "body": [
       "pbc_led_${1|red,yellow,green|}(${2|true,false|});"
     ]

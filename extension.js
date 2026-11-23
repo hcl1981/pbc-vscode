@@ -1,6 +1,7 @@
 'use strict';
-// PBC+ für VS Code: Projekte aus der Buchvorlage, Starten, Debuggen und
-// Profilieren im Emulator PBConPC. Baut auf der Raspberry-Pi-Pico-Erweiterung auf.
+// PBC+ for VS Code: projects from the book template, run, debug and profile
+// in the PBConPC emulator. Builds on the Raspberry Pi Pico extension.
+// User-facing strings go through vscode.l10n.t (German: l10n/bundle.l10n.de.json).
 const vscode = require('vscode');
 const cp = require('child_process');
 const fs = require('fs');
@@ -9,137 +10,146 @@ const os = require('os');
 const path = require('path');
 const https = require('https');
 const zip = require('./lib/zip');
-const { PINS } = require('./lib/pins');
+const { pin } = require('./lib/pins');
 
+const t = (...a) => vscode.l10n.t(...a);
 const PICO = 'raspberry-pi.raspberry-pi-pico';
 const CORTEX = 'marus25.cortex-debug';
-const PBCONPC_SEITE = 'https://pbcplus.de/geraet/am-pc/';
-const DEBUG_NAME = 'PBC+ im PBConPC';
+const DEBUG_NAME = 'PBC+ in PBConPC';
 
-let ausgabe;              // Ausgabekanal „PBC+“
-let emulator = null;      // laufender PBConPC-Prozess
-let diagnose;             // Hinweise zu typischen Fallen
-const statusleiste = [];
+let output;               // output channel "PBC+"
+let emulator = null;      // running PBConPC process
+let diagnostics;          // hints about common pitfalls
+const statusItems = [];
 
-// ---------------------------------------------------------------- Hilfen
+// ---------------------------------------------------------------- helpers
 
-function einstellung(name) {
+function setting(name) {
     return vscode.workspace.getConfiguration('pbcplus').get(name);
 }
 
 function log(text) {
-    ausgabe.appendLine(text);
+    output.appendLine(text);
 }
 
-function wurzel() {
-    const ordner = vscode.workspace.workspaceFolders;
-    return ordner && ordner.length ? ordner[0] : null;
+function german() {
+    return vscode.env.language.toLowerCase().startsWith('de');
 }
 
-function istPbcProjekt(ordner) {
-    if (!ordner) return false;
+function pbconpcPage() {
+    return german() ? 'https://pbcplus.de/geraet/am-pc/' : 'https://github.com/hcl1981/PBConPC/releases/latest';
+}
+
+function rootFolder() {
+    const folders = vscode.workspace.workspaceFolders;
+    return folders && folders.length ? folders[0] : null;
+}
+
+function isPbcProject(folder) {
+    if (!folder) return false;
     try {
-        const cmake = fs.readFileSync(path.join(ordner.uri.fsPath, 'CMakeLists.txt'), 'utf8');
-        return /pbc_plus/.test(cmake) || fs.existsSync(path.join(ordner.uri.fsPath, 'pbc', 'pbc.h'));
+        const cmake = fs.readFileSync(path.join(folder.uri.fsPath, 'CMakeLists.txt'), 'utf8');
+        return /pbc_plus/.test(cmake) || fs.existsSync(path.join(folder.uri.fsPath, 'pbc', 'pbc.h'));
     } catch {
         return false;
     }
 }
 
-function imPfad(programm) {
-    const endungen = process.platform === 'win32' ? ['.exe', ''] : [''];
+function onPath(program) {
+    const suffixes = process.platform === 'win32' ? ['.exe', ''] : [''];
     for (const dir of (process.env.PATH || '').split(path.delimiter)) {
-        for (const e of endungen) {
-            const p = path.join(dir, programm + e);
+        for (const s of suffixes) {
+            const p = path.join(dir, program + s);
             try {
                 if (fs.statSync(p).isFile()) return p;
-            } catch { /* weiter */ }
+            } catch { /* next */ }
         }
     }
     return null;
 }
 
-function hatErweiterung(id) {
+function hasExtension(id) {
     return !!vscode.extensions.getExtension(id);
 }
 
-async function picoBefehl(befehl, ...args) {
-    if (!hatErweiterung(PICO)) return undefined;
+async function picoCommand(command, ...args) {
+    if (!hasExtension(PICO)) return undefined;
     try {
-        return await vscode.commands.executeCommand('raspberry-pi-pico.' + befehl, ...args);
+        return await vscode.commands.executeCommand('raspberry-pi-pico.' + command, ...args);
     } catch (e) {
-        log(`Pico-Erweiterung, ${befehl}: ${e.message || e}`);
+        log(`Pico extension, ${command}: ${e.message || e}`);
         return undefined;
     }
 }
 
-function freierPort() {
-    return new Promise((ok, fehler) => {
+function freePort() {
+    return new Promise((resolve, reject) => {
         const s = net.createServer();
         s.unref();
-        s.on('error', fehler);
+        s.on('error', reject);
         s.listen(0, '127.0.0.1', () => {
             const port = s.address().port;
-            s.close(() => ok(port));
+            s.close(() => resolve(port));
         });
     });
 }
 
-// Wartet, bis PBConPC eine Zeile mit `text` ausgibt. Nicht per Verbindung
-// prüfen: Jede Verbindung zum GDB-Port gilt als Debugger und lässt die
-// Maschine danach weiterlaufen.
-function warteAufAusgabe(p, text, ms) {
-    return new Promise((ok, fehler) => {
-        let puffer = '';
-        const zeit = setTimeout(() => fehler(new Error('PBConPC antwortet nicht')), ms);
-        const lesen = d => {
-            puffer += d.toString();
-            if (puffer.includes(text)) { clearTimeout(zeit); ok(); }
+// Waits until PBConPC prints a line containing `text`. Do not probe the port:
+// every connection to the GDB port counts as a debugger, and the machine runs
+// on once it disconnects.
+function waitForOutput(p, text, ms) {
+    return new Promise((resolve, reject) => {
+        let buffer = '';
+        const timer = setTimeout(() => reject(new Error(t('PBConPC does not respond'))), ms);
+        const read = d => {
+            buffer += d.toString();
+            if (buffer.includes(text)) { clearTimeout(timer); resolve(); }
         };
-        p.stdout.on('data', lesen);
-        p.stderr.on('data', lesen);
-        p.once('exit', () => { clearTimeout(zeit); fehler(new Error('PBConPC wurde beendet')); });
+        p.stdout.on('data', read);
+        p.stderr.on('data', read);
+        p.once('exit', () => { clearTimeout(timer); reject(new Error(t('PBConPC has exited'))); });
     });
 }
 
-// ---------------------------------------------------------------- PBConPC finden
+// ---------------------------------------------------------------- finding PBConPC
 
-async function pbconpcPfad(fragen = true) {
-    const gesetzt = einstellung('pbconpcPfad');
-    if (gesetzt) {
-        if (fs.existsSync(gesetzt)) return gesetzt;
-        vscode.window.showWarningMessage(`PBConPC nicht gefunden: ${gesetzt}`);
+async function pbconpcPath(ask = true) {
+    const configured = setting('pbconpcPath');
+    if (configured) {
+        if (fs.existsSync(configured)) return configured;
+        vscode.window.showWarningMessage(t('PBConPC not found: {0}', configured));
     } else {
-        const gefunden = imPfad('pbconpc');
-        if (gefunden) return gefunden;
+        const found = onPath('pbconpc');
+        if (found) return found;
     }
-    if (!fragen) return null;
-    const wahl = await vscode.window.showInformationMessage(
-        'Wo liegt PBConPC? Unter Windows ist es die Datei pbconpc.exe aus dem entpackten ZIP.',
-        'Programm auswählen', 'PBConPC herunterladen');
-    if (wahl === 'PBConPC herunterladen') {
-        vscode.env.openExternal(vscode.Uri.parse(PBCONPC_SEITE));
+    if (!ask) return null;
+    const choose = t('Choose program');
+    const download = t('Download PBConPC');
+    const choice = await vscode.window.showInformationMessage(
+        t('Where is PBConPC? On Windows it is pbconpc.exe from the unpacked ZIP.'), choose, download);
+    if (choice === download) {
+        vscode.env.openExternal(vscode.Uri.parse(pbconpcPage()));
         return null;
     }
-    if (wahl === 'Programm auswählen') return pbconpcWaehlen();
+    if (choice === choose) return choosePbconpc();
     return null;
 }
 
-async function pbconpcWaehlen() {
-    const filter = process.platform === 'win32' ? { 'PBConPC': ['exe'] } : undefined;
-    const datei = await vscode.window.showOpenDialog({
-        canSelectMany: false, openLabel: 'PBConPC verwenden', title: 'PBConPC auswählen', filters: filter,
+async function choosePbconpc() {
+    const filters = process.platform === 'win32' ? { 'PBConPC': ['exe'] } : undefined;
+    const file = await vscode.window.showOpenDialog({
+        canSelectMany: false, openLabel: t('Use PBConPC'), title: t('Choose PBConPC'), filters,
     });
-    if (!datei) return null;
-    const p = datei[0].fsPath;
-    await vscode.workspace.getConfiguration('pbcplus').update('pbconpcPfad', p, vscode.ConfigurationTarget.Global);
-    vscode.window.showInformationMessage(`PBConPC: ${p}`);
+    if (!file) return null;
+    const p = file[0].fsPath;
+    await vscode.workspace.getConfiguration('pbcplus').update('pbconpcPath', p, vscode.ConfigurationTarget.Global);
+    vscode.window.showInformationMessage(t('PBConPC: {0}', p));
     return p;
 }
 
-// ---------------------------------------------------------------- Bauen
+// ---------------------------------------------------------------- building
 
-function projektName(root) {
+function projectName(root) {
     try {
         const cmake = fs.readFileSync(path.join(root, 'CMakeLists.txt'), 'utf8');
         const m = cmake.match(/^\s*project\s*\(\s*([A-Za-z0-9_.+-]+)/m);
@@ -149,71 +159,71 @@ function projektName(root) {
     }
 }
 
-function aufgabeAusfuehren(name, befehl, args, cwd) {
+function runTask(name, command, args, cwd) {
     const task = new vscode.Task({ type: 'pbcplus' }, vscode.TaskScope.Workspace, name, 'PBC+',
-        new vscode.ProcessExecution(befehl, args, { cwd }), ['$gcc']);
-    return new Promise(async (ok) => {
-        const weg = vscode.tasks.onDidEndTaskProcess(e => {
-            if (e.execution.task === task) { weg.dispose(); ok(e.exitCode === 0); }
+        new vscode.ProcessExecution(command, args, { cwd }), ['$gcc']);
+    return new Promise(async (resolve) => {
+        const done = vscode.tasks.onDidEndTaskProcess(e => {
+            if (e.execution.task === task) { done.dispose(); resolve(e.exitCode === 0); }
         });
         try {
             await vscode.tasks.executeTask(task);
         } catch (e) {
-            weg.dispose();
-            log(`Bauen: ${e.message || e}`);
-            ok(false);
+            done.dispose();
+            log(`Build: ${e.message || e}`);
+            resolve(false);
         }
     });
 }
 
-// Baut das Projekt und liefert { elf, uf2 } oder null.
-async function bauen() {
-    const ordner = wurzel();
-    if (!ordner) {
-        vscode.window.showErrorMessage('Öffne zuerst einen Projektordner.');
+// Builds the project and returns { elf, uf2, root }, or null.
+async function build() {
+    const folder = rootFolder();
+    if (!folder) {
+        vscode.window.showErrorMessage(t('Open a project folder first.'));
         return null;
     }
-    const root = ordner.uri.fsPath;
+    const root = folder.uri.fsPath;
     await vscode.workspace.saveAll(false);
+    const failed = () => vscode.window.showErrorMessage(t('The build failed. The error message is in the terminal.'));
 
     let elf = null;
-    if (hatErweiterung(PICO) && fs.existsSync(path.join(root, '.vscode', 'tasks.json'))) {
-        // Die Pico-Erweiterung baut und nennt den Pfad der .elf-Datei.
+    if (hasExtension(PICO) && fs.existsSync(path.join(root, '.vscode', 'tasks.json'))) {
+        // The Pico extension builds and returns the path of the .elf file.
         try {
             elf = await vscode.commands.executeCommand('raspberry-pi-pico.launchTargetPath');
-        } catch (e) {
-            vscode.window.showErrorMessage('Das Bauen hat nicht geklappt. Die Fehlermeldung steht im Terminal.');
+        } catch {
+            failed();
             return null;
         }
     } else {
-        const name = projektName(root);
+        const name = projectName(root);
         if (!name || !fs.existsSync(path.join(root, 'build'))) {
-            const wahl = await vscode.window.showErrorMessage(
-                'Das Projekt ist noch nicht eingerichtet. Importiere es einmal mit der Raspberry-Pi-Pico-Erweiterung.',
-                'Projekt importieren');
-            if (wahl) importieren(ordner.uri);
+            const importIt = t('Import project');
+            const choice = await vscode.window.showErrorMessage(
+                t('This project is not set up yet. Import it once with the Raspberry Pi Pico extension.'), importIt);
+            if (choice === importIt) importProject(folder.uri);
             return null;
         }
-        const cmake = imPfad('cmake') || 'cmake';
-        if (!await aufgabeAusfuehren('Bauen', cmake, ['--build', 'build'], root)) {
-            vscode.window.showErrorMessage('Das Bauen hat nicht geklappt. Die Fehlermeldung steht im Terminal.');
+        if (!await runTask(t('Build'), onPath('cmake') || 'cmake', ['--build', 'build'], root)) {
+            failed();
             return null;
         }
         elf = path.join(root, 'build', name + '.elf');
     }
     if (!elf || !fs.existsSync(elf)) {
-        vscode.window.showErrorMessage('Nach dem Bauen fehlt die Datei ' + (elf || '.elf') + '.');
+        vscode.window.showErrorMessage(t('After building, the file {0} is missing.', elf || '.elf'));
         return null;
     }
     const uf2 = elf.replace(/\.elf$/i, '.uf2');
     if (!fs.existsSync(uf2)) {
-        vscode.window.showErrorMessage('Nach dem Bauen fehlt die Datei ' + uf2 + '. Steht pico_add_extra_outputs in CMakeLists.txt?');
+        vscode.window.showErrorMessage(t('After building, the file {0} is missing. Is pico_add_extra_outputs in CMakeLists.txt?', uf2));
         return null;
     }
     return { elf, uf2, root };
 }
 
-function istDebugBau(root) {
+function isDebugBuild(root) {
     try {
         return /^\s*set\s*\(\s*CMAKE_BUILD_TYPE\s+Debug\s*\)/m.test(fs.readFileSync(path.join(root, 'CMakeLists.txt'), 'utf8'));
     } catch {
@@ -221,128 +231,130 @@ function istDebugBau(root) {
     }
 }
 
-async function debugBauEintragen(root) {
-    const datei = path.join(root, 'CMakeLists.txt');
-    const text = fs.readFileSync(datei, 'utf8');
-    const neu = text.replace(/^(\s*include\s*\(\s*pico_sdk_import\.cmake\s*\))/m, 'set(CMAKE_BUILD_TYPE Debug)\n$1');
-    if (neu === text) return false;
-    fs.writeFileSync(datei, neu);
+function addDebugBuild(root) {
+    const file = path.join(root, 'CMakeLists.txt');
+    const text = fs.readFileSync(file, 'utf8');
+    const changed = text.replace(/^(\s*include\s*\(\s*pico_sdk_import\.cmake\s*\))/m, 'set(CMAKE_BUILD_TYPE Debug)\n$1');
+    if (changed === text) return false;
+    fs.writeFileSync(file, changed);
     return true;
 }
 
-// ---------------------------------------------------------------- Emulator starten
+// ---------------------------------------------------------------- running the emulator
 
-function emulatorBeenden() {
+function stopEmulator() {
     if (emulator) {
-        try { emulator.kill(); } catch { /* schon weg */ }
+        try { emulator.kill(); } catch { /* already gone */ }
         emulator = null;
     }
 }
 
-function emulatorStarten(programm, args, cwd, beimEnde) {
-    emulatorBeenden();
-    log(`> ${programm} ${args.join(' ')}`);
-    const p = cp.spawn(programm, args, { cwd, windowsHide: false });
+function startEmulator(program, args, cwd, onExit) {
+    stopEmulator();
+    log(`> ${program} ${args.join(' ')}`);
+    const p = cp.spawn(program, args, { cwd, windowsHide: false });
     emulator = p;
-    p.stdout.on('data', d => ausgabe.append(d.toString()));
-    p.stderr.on('data', d => ausgabe.append(d.toString()));
+    p.stdout.on('data', d => output.append(d.toString()));
+    p.stderr.on('data', d => output.append(d.toString()));
     p.on('error', e => {
-        log(`PBConPC lässt sich nicht starten: ${e.message}`);
-        vscode.window.showErrorMessage(`PBConPC lässt sich nicht starten: ${e.message}`);
+        log(`PBConPC: ${e.message}`);
+        vscode.window.showErrorMessage(t('PBConPC could not be started: {0}', e.message));
     });
     p.on('exit', code => {
-        log(`PBConPC beendet (${code})`);
+        log(`PBConPC exited (${code})`);
         if (emulator === p) emulator = null;
-        if (beimEnde) beimEnde(code);
+        if (onExit) onExit(code);
     });
     return p;
 }
 
-function grundArgumente() {
+function baseArgs() {
     const args = ['--flash', 'none'];
-    if (einstellung('usbTerminal')) args.push('--usb-terminal');
+    if (setting('usbTerminal')) args.push('--usb-terminal');
     return args;
 }
 
-async function starten() {
-    const programm = await pbconpcPfad();
-    if (!programm) return;
-    const bau = await bauen();
-    if (!bau) return;
-    const args = grundArgumente();
-    if (einstellung('genaueZeiten')) args.push('--exact-bus');
-    args.push(bau.uf2);
-    emulatorStarten(programm, args, bau.root);
+async function run() {
+    const program = await pbconpcPath();
+    if (!program) return;
+    const b = await build();
+    if (!b) return;
+    const args = baseArgs();
+    if (setting('exactTiming')) args.push('--exact-bus');
+    args.push(b.uf2);
+    startEmulator(program, args, b.root);
 }
 
-// ---------------------------------------------------------------- Debuggen
+// ---------------------------------------------------------------- debugging
 
-async function gdbPfad() {
-    const gesetzt = einstellung('gdbPfad');
-    if (gesetzt) return gesetzt;
+async function gdbPath() {
+    const configured = setting('gdbPath');
+    if (configured) return configured;
     if (process.platform !== 'win32') {
-        const multi = imPfad('gdb-multiarch');
+        const multi = onPath('gdb-multiarch');
         if (multi) return multi;
     }
-    const pico = await picoBefehl('getGDBPath');
+    const pico = await picoCommand('getGDBPath');
     if (pico && fs.existsSync(pico)) return pico;
-    return imPfad('arm-none-eabi-gdb');
+    return onPath('arm-none-eabi-gdb');
 }
 
-async function toolchainOrdner() {
-    const gcc = await picoBefehl('getCompilerPath');
+async function toolchainDir() {
+    const gcc = await picoCommand('getCompilerPath');
     if (gcc && fs.existsSync(gcc)) return path.dirname(gcc);
-    const imP = imPfad('arm-none-eabi-gcc');
-    return imP ? path.dirname(imP) : undefined;
+    const found = onPath('arm-none-eabi-gcc');
+    return found ? path.dirname(found) : undefined;
 }
 
-async function debuggen() {
-    if (!hatErweiterung(CORTEX)) {
-        const wahl = await vscode.window.showErrorMessage(
-            'Zum Debuggen braucht es die Erweiterung Cortex-Debug. Sie kommt normalerweise mit der Raspberry-Pi-Pico-Erweiterung.',
-            'Cortex-Debug installieren');
-        if (wahl) vscode.commands.executeCommand('workbench.extensions.installExtension', CORTEX);
+async function debug() {
+    if (!hasExtension(CORTEX)) {
+        const install = t('Install Cortex-Debug');
+        const choice = await vscode.window.showErrorMessage(
+            t('Debugging needs the Cortex-Debug extension. It usually comes with the Raspberry Pi Pico extension.'), install);
+        if (choice === install) vscode.commands.executeCommand('workbench.extensions.installExtension', CORTEX);
         return;
     }
-    const programm = await pbconpcPfad();
-    if (!programm) return;
-    const gdb = await gdbPfad();
+    const program = await pbconpcPath();
+    if (!program) return;
+    const gdb = await gdbPath();
     if (!gdb) {
-        const linux = process.platform === 'linux';
-        vscode.window.showErrorMessage(linux
-            ? 'Der Debugger GDB fehlt. Installiere ihn im Terminal mit: sudo apt install gdb-multiarch'
-            : 'Der Debugger GDB fehlt. Er kommt mit der Raspberry-Pi-Pico-Erweiterung (arm-none-eabi-gdb).');
+        vscode.window.showErrorMessage(process.platform === 'linux'
+            ? t('The debugger GDB is missing. Install it in a terminal with: sudo apt install gdb-multiarch')
+            : t('The debugger GDB is missing. It comes with the Raspberry Pi Pico extension (arm-none-eabi-gdb).'));
         return;
     }
-    const ordner = wurzel();
-    if (ordner && !istDebugBau(ordner.uri.fsPath) && !einstellung('debugHinweisAus')) {
-        const wahl = await vscode.window.showInformationMessage(
-            'Die Vorlage baut optimiert: Im Debugger springen dann Zeilen, und manche Variable fehlt. Zum Fehlersuchen besser „set(CMAKE_BUILD_TYPE Debug)“ eintragen (Anhang F des C-Buchs).',
-            'Eintragen', 'So lassen', 'Nicht mehr fragen');
-        if (wahl === undefined) return;
-        if (wahl === 'Eintragen' && !await debugBauEintragen(ordner.uri.fsPath)) {
-            vscode.window.showWarningMessage('In CMakeLists.txt fehlt die Zeile include(pico_sdk_import.cmake). Bitte von Hand eintragen.');
+    const folder = rootFolder();
+    if (folder && !isDebugBuild(folder.uri.fsPath) && !setting('hideDebugBuildHint')) {
+        const add = t('Add it');
+        const keep = t('Leave as is');
+        const never = t('Don\'t ask again');
+        const choice = await vscode.window.showInformationMessage(
+            t('The template builds optimised: in the debugger, lines jump around and some variables are missing. For debugging, add "set(CMAKE_BUILD_TYPE Debug)" (appendix F of the C book).'),
+            add, keep, never);
+        if (choice === undefined) return;
+        if (choice === add && !addDebugBuild(folder.uri.fsPath)) {
+            vscode.window.showWarningMessage(t('Could not find include(pico_sdk_import.cmake) in CMakeLists.txt. Please add set(CMAKE_BUILD_TYPE Debug) by hand.'));
         }
-        if (wahl === 'Nicht mehr fragen') {
-            await vscode.workspace.getConfiguration('pbcplus').update('debugHinweisAus', true, vscode.ConfigurationTarget.Global);
+        if (choice === never) {
+            await vscode.workspace.getConfiguration('pbcplus').update('hideDebugBuildHint', true, vscode.ConfigurationTarget.Global);
         }
     }
-    const bau = await bauen();
-    if (!bau) return;
+    const b = await build();
+    if (!b) return;
 
-    const port = await freierPort();
-    const args = grundArgumente();
-    args.push(`--gdb-wait=127.0.0.1:${port}`, bau.uf2);
-    let sitzung = null;
-    const p = emulatorStarten(programm, args, bau.root, () => {
-        if (sitzung) vscode.debug.stopDebugging(sitzung);
+    const port = await freePort();
+    const args = baseArgs();
+    args.push(`--gdb-wait=127.0.0.1:${port}`, b.uf2);
+    let session = null;
+    const p = startEmulator(program, args, b.root, () => {
+        if (session) vscode.debug.stopDebugging(session);
     });
     try {
-        await warteAufAusgabe(p, 'gdb: waiting on port', 15000);
+        await waitForOutput(p, 'gdb: waiting on port', 15000);
     } catch (e) {
-        vscode.window.showErrorMessage(`PBConPC: ${e.message}. Mehr im Ausgabefenster „PBC+“.`);
-        ausgabe.show(true);
-        emulatorBeenden();
+        vscode.window.showErrorMessage(t('PBConPC: {0}. More in the "PBC+" output panel.', e.message));
+        output.show(true);
+        stopEmulator();
         return;
     }
 
@@ -352,73 +364,73 @@ async function debuggen() {
         request: 'launch',
         servertype: 'external',
         gdbTarget: `127.0.0.1:${port}`,
-        executable: bau.elf,
+        executable: b.elf,
         gdbPath: gdb,
-        cwd: bau.root,
+        cwd: b.root,
         runToEntryPoint: 'main',
-        // PBConPC hat die Firmware schon im Flash und hält am ersten Befehl:
-        // kein „load“ und kein „monitor reset halt“.
+        // PBConPC already has the firmware in flash and holds at the first
+        // instruction: no "load" and no "monitor reset halt".
         overrideLaunchCommands: [],
         overrideRestartCommands: ['monitor reset'],
         showDevDebugOutput: 'none',
     };
-    const tc = await toolchainOrdner();
+    const tc = await toolchainDir();
     if (tc) config.armToolchainPath = tc;
 
-    const ende = vscode.debug.onDidTerminateDebugSession(s => {
-        if (s === sitzung || (sitzung === null && s.name === DEBUG_NAME)) {
-            ende.dispose();
-            anfang.dispose();
-            emulatorBeenden();
-        }
+    const started = vscode.debug.onDidStartDebugSession(s => {
+        if (s.name === DEBUG_NAME) session = s;
     });
-    const anfang = vscode.debug.onDidStartDebugSession(s => {
-        if (s.name === DEBUG_NAME) sitzung = s;
+    const ended = vscode.debug.onDidTerminateDebugSession(s => {
+        if (s === session || (session === null && s.name === DEBUG_NAME)) {
+            ended.dispose();
+            started.dispose();
+            stopEmulator();
+        }
     });
     log('Debugger: ' + JSON.stringify(config));
-    const ok = await vscode.debug.startDebugging(ordner, config);
-    log('Debugger gestartet: ' + ok);
+    const ok = await vscode.debug.startDebugging(folder, config);
+    log('Debugger started: ' + ok);
     if (!ok) {
-        ende.dispose();
-        anfang.dispose();
-        emulatorBeenden();
+        ended.dispose();
+        started.dispose();
+        stopEmulator();
     }
 }
 
-// ---------------------------------------------------------------- Profiler
+// ---------------------------------------------------------------- profiler
 
-function berichtLesen(text) {
-    const kerne = [];
-    let kern = null;
-    for (const zeile of text.split(/\r?\n/)) {
-        let m = zeile.match(/^core\s+(\d+):\s*busy\s+([\d.]+)\s*%,\s*sleeping[^0-9]*([\d.]+)\s*%,\s*off\s+([\d.]+)\s*%/);
+function parseReport(text) {
+    const cores = [];
+    let core = null;
+    for (const line of text.split(/\r?\n/)) {
+        let m = line.match(/^core\s+(\d+):\s*busy\s+([\d.]+)\s*%,\s*sleeping[^0-9]*([\d.]+)\s*%,\s*off\s+([\d.]+)\s*%/);
         if (m) {
-            kern = { nr: +m[1], busy: +m[2], schlaf: +m[3], aus: +m[4], zeilen: [] };
-            kerne.push(kern);
+            core = { nr: +m[1], busy: +m[2], sleeping: +m[3], off: +m[4], rows: [] };
+            cores.push(core);
             continue;
         }
-        m = zeile.match(/^\s*([\d.]+)\s+([\d.]+)\s+([0-9a-fA-F]{6,8})\s+(.+?)\s*$/);
-        if (m && kern) {
+        m = line.match(/^\s*([\d.]+)\s+([\d.]+)\s+([0-9a-fA-F]{6,8})\s+(.+?)\s*$/);
+        if (m && core) {
             const name = m[4].replace(/\s*\[[^\]]*\]\s*$/, '');
-            kern.zeilen.push({ zeit: +m[1], busy: +m[2], adresse: m[3], name });
+            core.rows.push({ time: +m[1], busy: +m[2], address: m[3], name });
         }
     }
-    return kerne;
+    return cores;
 }
 
-function quellZeilen(elf, adressen, tc) {
+function sourceLines(elf, addresses, tc) {
     const a2l = tc ? path.join(tc, 'arm-none-eabi-addr2line' + (process.platform === 'win32' ? '.exe' : '')) : null;
-    const programm = a2l && fs.existsSync(a2l) ? a2l : imPfad('arm-none-eabi-addr2line');
-    if (!programm || !adressen.length) return {};
+    const program = a2l && fs.existsSync(a2l) ? a2l : onPath('arm-none-eabi-addr2line');
+    if (!program || !addresses.length) return {};
     try {
-        const r = cp.spawnSync(programm, ['-e', elf, ...adressen.map(a => '0x' + a)], { encoding: 'utf8' });
-        const zeilen = (r.stdout || '').split(/\r?\n/);
-        const ergebnis = {};
-        adressen.forEach((a, i) => {
-            const m = (zeilen[i] || '').match(/^(.*):(\d+)/);
-            if (m && m[1] !== '??' && +m[2] > 0) ergebnis[a] = { datei: m[1], zeile: +m[2] };
+        const r = cp.spawnSync(program, ['-e', elf, ...addresses.map(a => '0x' + a)], { encoding: 'utf8' });
+        const lines = (r.stdout || '').split(/\r?\n/);
+        const result = {};
+        addresses.forEach((a, i) => {
+            const m = (lines[i] || '').match(/^(.*):(\d+)/);
+            if (m && m[1] !== '??' && +m[2] > 0) result[a] = { file: m[1], line: +m[2] };
         });
-        return ergebnis;
+        return result;
     } catch {
         return {};
     }
@@ -428,289 +440,291 @@ function html(text) {
     return String(text).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
-function berichtAnzeigen(kerne, quellen, roh, root) {
+function showReport(cores, sources, raw, root) {
     const panel = vscode.window.createWebviewPanel('pbcplusProfiler', 'PBC+ Profiler', vscode.ViewColumn.Beside,
         { enableScripts: true });
-    const teile = kerne.map(k => {
-        const hoechster = Math.max(0.01, ...k.zeilen.map(z => z.zeit));
-        const zeilen = k.zeilen.slice(0, 40).map(z => {
-            const q = quellen[z.adresse];
-            const eigen = q && root && path.resolve(q.datei).startsWith(path.resolve(root));
+    const sections = cores.map(k => {
+        const top = Math.max(0.01, ...k.rows.map(z => z.time));
+        const rows = k.rows.slice(0, 40).map(z => {
+            const q = sources[z.address];
+            const own = q && root && path.resolve(q.file).startsWith(path.resolve(root));
             const name = q
-                ? `<a href="#" data-datei="${html(q.datei)}" data-zeile="${q.zeile}">${html(z.name)}</a>`
+                ? `<a href="#" data-file="${html(q.file)}" data-line="${q.line}">${html(z.name)}</a>`
                 : html(z.name);
-            return `<tr class="${eigen ? 'eigen' : ''}"><td class="zahl">${z.zeit.toFixed(1)} %</td>
-                <td class="balken"><div style="width:${(100 * z.zeit / hoechster).toFixed(1)}%"></div></td>
-                <td>${name}${q ? `<span class="ort">${html(path.basename(q.datei))}:${q.zeile}</span>` : ''}</td></tr>`;
+            return `<tr class="${own ? 'own' : ''}"><td class="num">${z.time.toFixed(1)} %</td>
+                <td class="bar"><div style="width:${(100 * z.time / top).toFixed(1)}%"></div></td>
+                <td>${name}${q ? `<span class="loc">${html(path.basename(q.file))}:${q.line}</span>` : ''}</td></tr>`;
         }).join('');
-        return `<h2>Kern ${k.nr}</h2>
-            <p>rechnet ${k.busy} %, schläft ${k.schlaf} %, aus ${k.aus} %</p>
-            ${k.aus >= 99.9 ? '' : `<table>${zeilen}</table>`}`;
+        return `<h2>${html(t('Core {0}', k.nr))}</h2>
+            <p>${html(t('busy {0} %, sleeping {1} %, off {2} %', k.busy, k.sleeping, k.off))}</p>
+            ${k.off >= 99.9 ? '' : `<table>${rows}</table>`}`;
     }).join('');
-    panel.webview.html = `<!doctype html><html lang="de"><head><meta charset="utf-8">
+    panel.webview.html = `<!doctype html><html lang="${german() ? 'de' : 'en'}"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
 <style>
 body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); padding: 0 1em 2em; }
 table { border-collapse: collapse; width: 100%; }
 td { padding: 2px 10px 2px 0; vertical-align: middle; }
-td.zahl { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; width: 5em; }
-td.balken { width: 160px; min-width: 160px; }
-td.balken div { height: 10px; background: var(--vscode-charts-blue, #3794ff); border-radius: 2px; min-width: 1px; }
-tr.eigen td:last-child { font-weight: 600; }
-.ort { opacity: .6; margin-left: .6em; font-size: 90%; }
+td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; width: 5em; }
+td.bar { width: 160px; min-width: 160px; }
+td.bar div { height: 10px; background: var(--vscode-charts-blue, #3794ff); border-radius: 2px; min-width: 1px; }
+tr.own td:last-child { font-weight: 600; }
+.loc { opacity: .6; margin-left: .6em; font-size: 90%; }
 a { color: var(--vscode-textLink-foreground); text-decoration: none; }
 a:hover { text-decoration: underline; }
 details { margin-top: 2em; } pre { font-size: 90%; }
 </style></head><body>
-<h1>Wo bleibt die Zeit?</h1>
-<p>Anteil jeder Funktion an der Zeit, gemessen im PBConPC mit gerätegenauen Zeiten. Fett: Funktionen aus deinem Projekt. Ein Klick öffnet die Stelle im Quelltext.</p>
-${teile || '<p>Der Bericht enthält keine Messwerte.</p>'}
-<details><summary>Bericht als Text</summary><pre>${html(roh)}</pre></details>
+<h1>${html(t('Where does the time go?'))}</h1>
+<p>${html(t('Share of time for each function, measured in PBConPC with device-accurate timing. Bold: functions from your project. A click opens the place in the source code.'))}</p>
+${sections || `<p>${html(t('The report contains no measurements.'))}</p>`}
+<details><summary>${html(t('Report as text'))}</summary><pre>${html(raw)}</pre></details>
 <script>
 const vscode = acquireVsCodeApi();
 document.addEventListener('click', e => {
-  const a = e.target.closest('a[data-datei]');
+  const a = e.target.closest('a[data-file]');
   if (!a) return;
   e.preventDefault();
-  vscode.postMessage({ datei: a.dataset.datei, zeile: +a.dataset.zeile });
+  vscode.postMessage({ file: a.dataset.file, line: +a.dataset.line });
 });
 </script></body></html>`;
     panel.webview.onDidReceiveMessage(async m => {
         try {
-            const doc = await vscode.workspace.openTextDocument(m.datei);
-            const pos = new vscode.Position(Math.max(0, m.zeile - 1), 0);
+            const doc = await vscode.workspace.openTextDocument(m.file);
+            const pos = new vscode.Position(Math.max(0, m.line - 1), 0);
             await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One, selection: new vscode.Range(pos, pos) });
         } catch {
-            vscode.window.showWarningMessage(`Datei nicht gefunden: ${m.datei}`);
+            vscode.window.showWarningMessage(t('File not found: {0}', m.file));
         }
     });
 }
 
-async function profiler() {
-    const programm = await pbconpcPfad();
-    if (!programm) return;
-    const ordner = wurzel();
-    if (ordner && istDebugBau(ordner.uri.fsPath)) {
-        const wahl = await vscode.window.showWarningMessage(
-            'In CMakeLists.txt steht „set(CMAKE_BUILD_TYPE Debug)“. Für den Profiler besser ohne diese Zeile bauen, so wie das Programm auf dem PBC+ läuft.',
-            'Trotzdem messen');
-        if (!wahl) return;
+async function profile() {
+    const program = await pbconpcPath();
+    if (!program) return;
+    const folder = rootFolder();
+    if (folder && isDebugBuild(folder.uri.fsPath)) {
+        const anyway = t('Measure anyway');
+        const choice = await vscode.window.showWarningMessage(
+            t('CMakeLists.txt contains "set(CMAKE_BUILD_TYPE Debug)". For the profiler, better build without this line, the way the program runs on the PBC+.'),
+            anyway);
+        if (choice !== anyway) return;
     }
-    const bau = await bauen();
-    if (!bau) return;
-    const bericht = path.join(os.tmpdir(), `pbcplus-profil-${process.pid}-${Date.now()}.txt`);
-    const args = grundArgumente();
-    args.push('--exact-bus', `--profile=${bericht}`, `--profile-elf=${bau.elf}`, bau.uf2);
+    const b = await build();
+    if (!b) return;
+    const report = path.join(os.tmpdir(), `pbcplus-profile-${process.pid}-${Date.now()}.txt`);
+    const args = baseArgs();
+    args.push('--exact-bus', `--profile=${report}`, `--profile-elf=${b.elf}`, b.uf2);
     vscode.window.showInformationMessage(
-        'Der Profiler misst, solange das Programm läuft. Lass es ein paar Sekunden laufen und schließe dann das PBConPC-Fenster.');
-    emulatorStarten(programm, args, bau.root, async () => {
-        let roh;
+        t('The profiler measures while the program runs. Let it run for a few seconds, then close the PBConPC window.'));
+    startEmulator(program, args, b.root, async () => {
+        let raw;
         try {
-            roh = fs.readFileSync(bericht, 'utf8');
-            fs.unlinkSync(bericht);
+            raw = fs.readFileSync(report, 'utf8');
+            fs.unlinkSync(report);
         } catch {
-            vscode.window.showErrorMessage('PBConPC hat keinen Bericht geschrieben. Mehr im Ausgabefenster „PBC+“.');
+            vscode.window.showErrorMessage(t('PBConPC did not write a report. More in the "PBC+" output panel.'));
             return;
         }
-        const kerne = berichtLesen(roh);
-        const adressen = [...new Set(kerne.flatMap(k => k.zeilen.slice(0, 40).map(z => z.adresse)))];
-        const quellen = quellZeilen(bau.elf, adressen, await toolchainOrdner());
-        berichtAnzeigen(kerne, quellen, roh, bau.root);
+        const cores = parseReport(raw);
+        const addresses = [...new Set(cores.flatMap(k => k.rows.slice(0, 40).map(z => z.address)))];
+        const sources = sourceLines(b.elf, addresses, await toolchainDir());
+        showReport(cores, sources, raw, b.root);
     });
 }
 
-// ---------------------------------------------------------------- Neues Projekt
+// ---------------------------------------------------------------- new project
 
-function vorlageLaden(url) {
-    return new Promise((ok, fehler) => {
-        const anfrage = https.get(url, { timeout: 8000, headers: { 'User-Agent': 'pbcplus-vscode' } }, antwort => {
-            if (antwort.statusCode !== 200) {
-                antwort.resume();
-                return fehler(new Error('HTTP ' + antwort.statusCode));
+function downloadTemplate(url) {
+    return new Promise((resolve, reject) => {
+        const request = https.get(url, { timeout: 8000, headers: { 'User-Agent': 'pbcplus-vscode' } }, response => {
+            if (response.statusCode !== 200) {
+                response.resume();
+                return reject(new Error('HTTP ' + response.statusCode));
             }
-            const teile = [];
-            antwort.on('data', d => teile.push(d));
-            antwort.on('end', () => ok(Buffer.concat(teile)));
+            const parts = [];
+            response.on('data', d => parts.push(d));
+            response.on('end', () => resolve(Buffer.concat(parts)));
         });
-        anfrage.on('timeout', () => anfrage.destroy(new Error('Zeitüberschreitung')));
-        anfrage.on('error', fehler);
+        request.on('timeout', () => request.destroy(new Error('timeout')));
+        request.on('error', reject);
     });
 }
 
-function vorlageEntpacken(puffer, ziel) {
-    const eintraege = zip.eintraege(puffer);
-    // Die Vorlage liegt in einem Ordner (pbc-projekt/); der fällt weg.
-    const erste = eintraege.map(e => e.name.split('/')[0]);
-    const gemeinsam = erste.every(n => n === erste[0]) && eintraege.some(e => e.name.includes('/')) ? erste[0] + '/' : '';
-    if (!eintraege.some(e => e.name === gemeinsam + 'CMakeLists.txt')) throw new Error('Vorlage ohne CMakeLists.txt');
-    for (const e of eintraege) {
-        const rel = e.name.slice(gemeinsam.length);
+function unpackTemplate(buffer, target) {
+    const list = zip.entries(buffer);
+    // The template sits in one folder (pbc-projekt/); that level is dropped.
+    const firsts = list.map(e => e.name.split('/')[0]);
+    const common = firsts.every(n => n === firsts[0]) && list.some(e => e.name.includes('/')) ? firsts[0] + '/' : '';
+    if (!list.some(e => e.name === common + 'CMakeLists.txt')) throw new Error('template without CMakeLists.txt');
+    for (const e of list) {
+        const rel = e.name.slice(common.length);
         if (!rel) continue;
-        if (rel.split('/').includes('..') || path.isAbsolute(rel)) throw new Error('unzulässiger Pfad in der Vorlage: ' + e.name);
-        const p = path.join(ziel, ...rel.split('/').filter(Boolean));
-        if (e.ordner) fs.mkdirSync(p, { recursive: true });
+        if (rel.split('/').includes('..') || path.isAbsolute(rel)) throw new Error('invalid path in template: ' + e.name);
+        const p = path.join(target, ...rel.split('/').filter(Boolean));
+        if (e.directory) fs.mkdirSync(p, { recursive: true });
         else {
             fs.mkdirSync(path.dirname(p), { recursive: true });
-            fs.writeFileSync(p, e.daten);
+            fs.writeFileSync(p, e.data);
         }
     }
 }
 
-async function neuesProjekt(context) {
-    const ort = await vscode.window.showOpenDialog({
+async function newProject(context) {
+    const place = await vscode.window.showOpenDialog({
         canSelectFiles: false, canSelectFolders: true, canSelectMany: false,
-        openLabel: 'Hier anlegen', title: 'In welchem Ordner soll das Projekt entstehen?',
+        openLabel: t('Create here'), title: t('In which folder should the project be created?'),
     });
-    if (!ort) return;
-    const eltern = ort[0].fsPath;
+    if (!place) return;
+    const parent = place[0].fsPath;
     const name = await vscode.window.showInputBox({
-        title: 'Name des Projektordners', value: 'pbc-projekt',
-        prompt: 'Nur Buchstaben ohne Umlaute, Ziffern, - und _',
+        title: t('Name of the project folder'), value: t('pbc-project'),
+        prompt: t('Letters without accents, digits, - and _ only'),
         validateInput: v => {
-            if (!/^[A-Za-z0-9_-]+$/.test(v)) return 'Bitte nur A–Z, a–z, 0–9, - und _ verwenden, ohne Leerzeichen und Umlaute.';
-            if (fs.existsSync(path.join(eltern, v))) return 'Diesen Ordner gibt es dort schon.';
+            if (!/^[A-Za-z0-9_-]+$/.test(v)) return t('Please use only A–Z, a–z, 0–9, - and _, without spaces or accented letters.');
+            if (fs.existsSync(path.join(parent, v))) return t('This folder already exists there.');
             return null;
         },
     });
     if (!name) return;
-    const ziel = path.join(eltern, name);
-    if (/[^\x21-\x7e\\/:]/.test(eltern)) {
-        const wahl = await vscode.window.showWarningMessage(
-            `Im Pfad „${eltern}“ stehen Leerzeichen oder Umlaute. Damit gibt es beim Bauen oft Fehler. Besser ist ein Ordner wie C:\\PicoBoy.`,
-            { modal: true }, 'Trotzdem hier anlegen');
-        if (!wahl) return;
+    const target = path.join(parent, name);
+    if (/[^\x21-\x7e\\/:]/.test(parent)) {
+        const anyway = t('Create here anyway');
+        const choice = await vscode.window.showWarningMessage(
+            t('The path "{0}" contains spaces or accented letters. This often causes build errors. A folder like C:\\PicoBoy is better.', parent),
+            { modal: true }, anyway);
+        if (choice !== anyway) return;
     }
 
-    let puffer = null;
-    let quelle = 'pbcplus.de';
+    let buffer = null;
+    let source = 'pbcplus.de';
     try {
-        puffer = await vorlageLaden(einstellung('vorlageUrl'));
-        zip.eintraege(puffer);
+        buffer = await downloadTemplate(setting('templateUrl'));
+        zip.entries(buffer);
     } catch (e) {
-        log(`Vorlage von ${einstellung('vorlageUrl')} nicht geladen (${e.message}), nehme die mitgelieferte.`);
-        puffer = fs.readFileSync(path.join(context.extensionPath, 'vorlage', 'pbc-vorlage.zip'));
-        quelle = 'der Erweiterung (ohne Internet)';
+        log(`Template not loaded from ${setting('templateUrl')} (${e.message}), using the bundled one.`);
+        buffer = fs.readFileSync(path.join(context.extensionPath, 'template', 'pbc-vorlage.zip'));
+        source = 'bundled';
     }
     try {
-        fs.mkdirSync(ziel);
-        vorlageEntpacken(puffer, ziel);
+        fs.mkdirSync(target);
+        unpackTemplate(buffer, target);
     } catch (e) {
-        vscode.window.showErrorMessage(`Das Projekt ließ sich nicht anlegen: ${e.message}`);
+        vscode.window.showErrorMessage(t('Could not create the project: {0}', e.message));
         return;
     }
-    log(`Neues Projekt ${ziel}, Vorlage aus ${quelle}`);
-    const uri = vscode.Uri.file(ziel);
-    if (hatErweiterung(PICO)) {
+    log(`New project ${target}, template: ${source}`);
+    const uri = vscode.Uri.file(target);
+    if (hasExtension(PICO)) {
         vscode.window.showInformationMessage(
-            `Projekt „${name}“ angelegt. Jetzt einmal importieren: SDK-Version 2.2.0 wählen und auf „Import“ klicken.`);
-        importieren(uri);
+            t('Project "{0}" created. Now import it once: choose SDK version 2.2.0 and click "Import".', name));
+        importProject(uri);
     } else {
-        const wahl = await vscode.window.showWarningMessage(
-            `Projekt „${name}“ angelegt. Zum Bauen fehlt noch die Erweiterung „Raspberry Pi Pico“.`,
-            'Erweiterung installieren', 'Ordner öffnen');
-        if (wahl === 'Erweiterung installieren') vscode.commands.executeCommand('workbench.extensions.installExtension', PICO);
-        if (wahl === 'Ordner öffnen') vscode.commands.executeCommand('vscode.openFolder', uri);
+        const install = t('Install extension');
+        const open = t('Open folder');
+        const choice = await vscode.window.showWarningMessage(
+            t('Project "{0}" created. Building still needs the "Raspberry Pi Pico" extension.', name), install, open);
+        if (choice === install) vscode.commands.executeCommand('workbench.extensions.installExtension', PICO);
+        if (choice === open) vscode.commands.executeCommand('vscode.openFolder', uri);
     }
 }
 
-function importieren(uri) {
+function importProject(uri) {
     vscode.commands.executeCommand('raspberry-pi-pico.importProject', uri);
 }
 
-// ---------------------------------------------------------------- Hilfen im Editor
+// ---------------------------------------------------------------- editor help
 
-const PIN_KONTEXT = /gpio|pwm|adc|pin|spi|i2c|uart|pio/i;
+const PIN_CONTEXT = /gpio|pwm|adc|pin|spi|i2c|uart|pio/i;
 
 function pinHover(doc, pos) {
-    const bereich = doc.getWordRangeAtPosition(pos, /\b(?:GP)?\d{1,2}\b/);
-    if (!bereich) return null;
-    const wort = doc.getText(bereich);
-    const n = parseInt(wort.replace(/^GP/, ''), 10);
-    const pin = PINS[n];
-    if (!pin) return null;
-    const zeile = doc.lineAt(pos.line).text;
-    if (!wort.startsWith('GP') && !PIN_KONTEXT.test(zeile)) return null;
-    const md = new vscode.MarkdownString(`**GP${n} – ${pin[0]}** (PicoBoy Color Plus)\n\n${pin[1]}`);
-    return new vscode.Hover(md, bereich);
+    const range = doc.getWordRangeAtPosition(pos, /\b(?:GP)?\d{1,2}\b/);
+    if (!range) return null;
+    const word = doc.getText(range);
+    const n = parseInt(word.replace(/^GP/, ''), 10);
+    const p = pin(n, vscode.env.language);
+    if (!p) return null;
+    const line = doc.lineAt(pos.line).text;
+    if (!word.startsWith('GP') && !PIN_CONTEXT.test(line)) return null;
+    return new vscode.Hover(new vscode.MarkdownString(`**GP${n} – ${p[0]}** (PicoBoy Color Plus)\n\n${p[1]}`), range);
 }
 
-function pruefen(doc) {
-    if (!diagnose) return;
+function check(doc) {
+    if (!diagnostics) return;
     const name = path.basename(doc.fileName);
-    const funde = [];
+    const found = [];
     const text = doc.getText();
-    const melde = (re, nachricht) => {
+    const report = (re, message) => {
         for (const m of text.matchAll(re)) {
             const start = doc.positionAt(m.index);
-            const ende = doc.positionAt(m.index + m[0].length);
-            const d = new vscode.Diagnostic(new vscode.Range(start, ende), nachricht, vscode.DiagnosticSeverity.Warning);
+            const end = doc.positionAt(m.index + m[0].length);
+            const d = new vscode.Diagnostic(new vscode.Range(start, end), message, vscode.DiagnosticSeverity.Warning);
             d.source = 'PBC+';
-            funde.push(d);
+            found.push(d);
         }
     };
     if (name === 'CMakeLists.txt') {
-        melde(/pico_enable_stdio_uart\s*\(\s*[^\s)]+\s+1\s*\)/g,
-            'Die serielle Schnittstelle (UART) liegt auf GP0/GP1 – dort hängen Joystick Mitte und rechts. Für printf besser pico_enable_stdio_usb nehmen.');
+        report(/pico_enable_stdio_uart\s*\(\s*[^\s)]+\s+1\s*\)/g,
+            t('The serial port (UART) is on GP0/GP1, where the joystick centre and right are connected. For printf, use pico_enable_stdio_usb instead.'));
     } else if (doc.languageId === 'c' || doc.languageId === 'cpp') {
-        melde(/\b(?:stdio_uart_init|uart_init\s*\(\s*uart0)\b[^;]*/g,
-            'UART0 liegt auf GP0/GP1 – dort hängen Joystick Mitte und rechts. Danach reagiert der Joystick nicht mehr richtig.');
-        melde(/gpio_set_function\s*\(\s*[01]\s*,\s*GPIO_FUNC_UART\s*\)/g,
-            'GP0/GP1 sind beim PBC+ der Joystick (Mitte und rechts), keine serielle Schnittstelle.');
+        report(/\b(?:stdio_uart_init|uart_init\s*\(\s*uart0)\b[^;]*/g,
+            t('UART0 is on GP0/GP1, where the joystick centre and right are connected. The joystick will then not work properly.'));
+        report(/gpio_set_function\s*\(\s*[01]\s*,\s*GPIO_FUNC_UART\s*\)/g,
+            t('On the PBC+, GP0/GP1 are the joystick (centre and right), not a serial port.'));
     }
-    diagnose.set(doc.uri, funde);
+    diagnostics.set(doc.uri, found);
 }
 
-// ---------------------------------------------------------------- Start
+// ---------------------------------------------------------------- start-up
 
-function statusleisteAktualisieren() {
-    const zeigen = istPbcProjekt(wurzel());
-    for (const s of statusleiste) zeigen ? s.show() : s.hide();
-    vscode.commands.executeCommand('setContext', 'pbcplus.projekt', zeigen);
+function updateStatusBar() {
+    const show = isPbcProject(rootFolder());
+    for (const s of statusItems) show ? s.show() : s.hide();
+    vscode.commands.executeCommand('setContext', 'pbcplus.project', show);
 }
 
-function importHinweis() {
-    const ordner = wurzel();
-    if (!ordner || !istPbcProjekt(ordner) || !hatErweiterung(PICO)) return;
-    if (fs.existsSync(path.join(ordner.uri.fsPath, '.vscode', 'tasks.json'))) return;
-    vscode.window.showInformationMessage(
-        'Dieses PBC+-Projekt ist noch nicht für die Raspberry-Pi-Pico-Erweiterung eingerichtet.', 'Jetzt importieren')
-        .then(w => { if (w) importieren(ordner.uri); });
+function importHint() {
+    const folder = rootFolder();
+    if (!folder || !isPbcProject(folder) || !hasExtension(PICO)) return;
+    if (fs.existsSync(path.join(folder.uri.fsPath, '.vscode', 'tasks.json'))) return;
+    const now = t('Import now');
+    vscode.window.showInformationMessage(t('This PBC+ project is not set up for the Raspberry Pi Pico extension yet.'), now)
+        .then(choice => { if (choice === now) importProject(folder.uri); });
 }
 
 function activate(context) {
-    ausgabe = vscode.window.createOutputChannel('PBC+');
-    diagnose = vscode.languages.createDiagnosticCollection('pbcplus');
+    output = vscode.window.createOutputChannel('PBC+');
+    diagnostics = vscode.languages.createDiagnosticCollection('pbcplus');
     const reg = (id, fn) => context.subscriptions.push(vscode.commands.registerCommand(id, fn));
-    reg('pbcplus.neuesProjekt', () => neuesProjekt(context));
-    reg('pbcplus.starten', starten);
-    reg('pbcplus.debuggen', debuggen);
-    reg('pbcplus.profiler', profiler);
-    reg('pbcplus.pbconpcWaehlen', pbconpcWaehlen);
-    reg('pbcplus.beenden', emulatorBeenden);
+    reg('pbcplus.newProject', () => newProject(context));
+    reg('pbcplus.run', run);
+    reg('pbcplus.debug', debug);
+    reg('pbcplus.profile', profile);
+    reg('pbcplus.choosePbconpc', choosePbconpc);
+    reg('pbcplus.stop', stopEmulator);
 
-    const knopf = (text, befehl, tip, prio) => {
-        const s = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, prio);
-        s.text = text; s.command = befehl; s.tooltip = tip;
-        statusleiste.push(s);
+    const button = (text, command, tooltip, priority) => {
+        const s = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, priority);
+        s.text = text; s.command = command; s.tooltip = tooltip;
+        statusItems.push(s);
         context.subscriptions.push(s);
     };
-    knopf('$(play) PBConPC', 'pbcplus.starten', 'Bauen und im PBConPC starten', 9);
-    knopf('$(debug-alt) Debuggen', 'pbcplus.debuggen', 'Bauen und im PBConPC debuggen', 8);
-    statusleisteAktualisieren();
-    context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(statusleisteAktualisieren));
+    button('$(play) PBConPC', 'pbcplus.run', t('Build and run in PBConPC'), 9);
+    button('$(debug-alt) ' + t('Debug'), 'pbcplus.debug', t('Build and debug in PBConPC'), 8);
+    updateStatusBar();
+    context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(updateStatusBar));
 
     context.subscriptions.push(vscode.languages.registerHoverProvider(
         [{ language: 'c' }, { language: 'cpp' }], { provideHover: pinHover }));
-    context.subscriptions.push(diagnose);
-    context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(pruefen));
-    context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(e => pruefen(e.document)));
-    context.subscriptions.push(vscode.workspace.onDidCloseTextDocument(d => diagnose.delete(d.uri)));
-    vscode.workspace.textDocuments.forEach(pruefen);
-    importHinweis();
+    context.subscriptions.push(diagnostics);
+    context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(check));
+    context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(e => check(e.document)));
+    context.subscriptions.push(vscode.workspace.onDidCloseTextDocument(d => diagnostics.delete(d.uri)));
+    vscode.workspace.textDocuments.forEach(check);
+    importHint();
 }
 
 function deactivate() {
-    emulatorBeenden();
+    stopEmulator();
 }
 
-module.exports = { activate, deactivate, berichtLesen, vorlageEntpacken };
+module.exports = { activate, deactivate, parseReport, unpackTemplate };

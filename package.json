@@ -1,19 +1,39 @@
 {
   "name": "pbcplus",
-  "displayName": "PBC+ für VS Code",
-  "description": "PicoBoy Color Plus in C: Projekt aus der Buchvorlage anlegen, im Emulator PBConPC starten, debuggen und messen.",
-  "version": "0.1.0",
+  "displayName": "%displayName%",
+  "description": "%description%",
+  "version": "0.2.0",
   "publisher": "pbcplus",
   "author": "Jan Schulz",
   "license": "MIT",
   "icon": "media/icon.png",
-  "homepage": "https://pbcplus.de/programmieren/c/",
-  "repository": { "type": "git", "url": "https://github.com/hcl1981/pbc-vscode" },
-  "bugs": { "url": "https://github.com/hcl1981/pbc-vscode/issues" },
-  "engines": { "vscode": "^1.90.0" },
-  "categories": ["Programming Languages", "Debuggers", "Snippets", "Education"],
-  "keywords": ["PicoBoy", "PBC+", "RP2350", "Pico SDK", "Raspberry Pi Pico"],
-  "extensionDependencies": ["raspberry-pi.raspberry-pi-pico"],
+  "homepage": "https://github.com/hcl1981/pbc-vscode",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hcl1981/pbc-vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/hcl1981/pbc-vscode/issues"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Debuggers",
+    "Snippets",
+    "Education"
+  ],
+  "keywords": [
+    "PicoBoy",
+    "PBC+",
+    "RP2350",
+    "Pico SDK",
+    "Raspberry Pi Pico"
+  ],
+  "extensionDependencies": [
+    "raspberry-pi.raspberry-pi-pico"
+  ],
   "main": "./extension.js",
   "activationEvents": [
     "workspaceContains:pbc/pbc.h",
@@ -22,61 +42,108 @@
   ],
   "contributes": {
     "commands": [
-      { "command": "pbcplus.neuesProjekt", "title": "Neues Projekt aus der Buchvorlage", "category": "PBC+" },
-      { "command": "pbcplus.starten", "title": "Im PBConPC starten", "category": "PBC+", "icon": "$(play)" },
-      { "command": "pbcplus.debuggen", "title": "Im PBConPC debuggen", "category": "PBC+", "icon": "$(debug-alt)" },
-      { "command": "pbcplus.profiler", "title": "Profiler: Wo bleibt die Zeit?", "category": "PBC+" },
-      { "command": "pbcplus.beenden", "title": "PBConPC beenden", "category": "PBC+" },
-      { "command": "pbcplus.pbconpcWaehlen", "title": "PBConPC-Programm auswählen", "category": "PBC+" }
+      {
+        "command": "pbcplus.newProject",
+        "title": "%command.newProject%",
+        "category": "PBC+"
+      },
+      {
+        "command": "pbcplus.run",
+        "title": "%command.run%",
+        "category": "PBC+",
+        "icon": "$(play)"
+      },
+      {
+        "command": "pbcplus.debug",
+        "title": "%command.debug%",
+        "category": "PBC+",
+        "icon": "$(debug-alt)"
+      },
+      {
+        "command": "pbcplus.profile",
+        "title": "%command.profile%",
+        "category": "PBC+"
+      },
+      {
+        "command": "pbcplus.stop",
+        "title": "%command.stop%",
+        "category": "PBC+"
+      },
+      {
+        "command": "pbcplus.choosePbconpc",
+        "title": "%command.choosePbconpc%",
+        "category": "PBC+"
+      }
     ],
     "menus": {
       "commandPalette": [
-        { "command": "pbcplus.starten", "when": "pbcplus.projekt" },
-        { "command": "pbcplus.debuggen", "when": "pbcplus.projekt" },
-        { "command": "pbcplus.profiler", "when": "pbcplus.projekt" }
+        {
+          "command": "pbcplus.run",
+          "when": "pbcplus.project"
+        },
+        {
+          "command": "pbcplus.debug",
+          "when": "pbcplus.project"
+        },
+        {
+          "command": "pbcplus.profile",
+          "when": "pbcplus.project"
+        }
       ],
       "editor/title/run": [
-        { "command": "pbcplus.starten", "when": "pbcplus.projekt && resourceLangId == c", "group": "navigation@1" },
-        { "command": "pbcplus.debuggen", "when": "pbcplus.projekt && resourceLangId == c", "group": "navigation@2" }
+        {
+          "command": "pbcplus.run",
+          "when": "pbcplus.project && resourceLangId == c",
+          "group": "navigation@1"
+        },
+        {
+          "command": "pbcplus.debug",
+          "when": "pbcplus.project && resourceLangId == c",
+          "group": "navigation@2"
+        }
       ]
     },
     "snippets": [
-      { "language": "c", "path": "./snippets/c.json" }
+      {
+        "language": "c",
+        "path": "./snippets/c.json"
+      }
     ],
     "configuration": {
-      "title": "PBC+",
+      "title": "%config.title%",
       "properties": {
-        "pbcplus.pbconpcPfad": {
+        "pbcplus.pbconpcPath": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Pfad zu PBConPC (unter Windows `pbconpc.exe`). Leer: im Suchpfad suchen, unter Linux nach der Installation des .deb-Pakets."
+          "markdownDescription": "%config.pbconpcPath%"
         },
-        "pbcplus.gdbPfad": {
+        "pbcplus.gdbPath": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Pfad zum Debugger GDB. Leer: unter Linux `gdb-multiarch`, sonst der GDB der Raspberry-Pi-Pico-Erweiterung."
+          "markdownDescription": "%config.gdbPath%"
         },
         "pbcplus.usbTerminal": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Im PBConPC-Fenster neben dem Bildschirm ein Terminal zeigen: Dort erscheint, was das Programm mit `printf` ausgibt."
+          "markdownDescription": "%config.usbTerminal%"
         },
-        "pbcplus.genaueZeiten": {
+        "pbcplus.exactTiming": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Beim Starten gerätegenaue Zeiten für Display und Sensor (`--exact-bus`). Langsamer, aber näher am PBC+. Der Profiler misst immer so."
+          "markdownDescription": "%config.exactTiming%"
         },
-        "pbcplus.debugHinweisAus": {
+        "pbcplus.hideDebugBuildHint": {
           "type": "boolean",
           "default": false,
-          "description": "Vor dem Debuggen nicht mehr an „set(CMAKE_BUILD_TYPE Debug)“ erinnern."
+          "description": "%config.hideDebugBuildHint%"
         },
-        "pbcplus.vorlageUrl": {
+        "pbcplus.templateUrl": {
           "type": "string",
           "default": "https://pbcplus.de/downloads/pbc-vorlage.zip",
-          "description": "Woher die Projektvorlage geladen wird. Ohne Internet nimmt die Erweiterung ihre mitgelieferte Fassung."
+          "description": "%config.templateUrl%"
         }
       }
     }
-  }
+  },
+  "l10n": "./l10n"
 }

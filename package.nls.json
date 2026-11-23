@@ -1,0 +1,17 @@
+{
+  "displayName": "PBC+ for VS Code",
+  "description": "PicoBoy Color Plus in C: create a project from the book template, run, debug and profile it in the PBConPC emulator.",
+  "command.newProject": "New Project from the Book Template",
+  "command.run": "Run in PBConPC",
+  "command.debug": "Debug in PBConPC",
+  "command.profile": "Profiler: Where Does the Time Go?",
+  "command.stop": "Stop PBConPC",
+  "command.choosePbconpc": "Choose PBConPC Program",
+  "config.title": "PBC+",
+  "config.pbconpcPath": "Path to PBConPC (on Windows `pbconpc.exe`). Empty: search the PATH, which finds it on Linux after installing the .deb package.",
+  "config.gdbPath": "Path to the GDB debugger. Empty: `gdb-multiarch` on Linux, otherwise the GDB of the Raspberry Pi Pico extension.",
+  "config.usbTerminal": "Show a terminal next to the screen in the PBConPC window, with everything the program prints with `printf`.",
+  "config.exactTiming": "Device-accurate timing for display and sensor when running (`--exact-bus`). Slower, but closer to the PBC+. The profiler always measures this way.",
+  "config.hideDebugBuildHint": "Do not remind about \"set(CMAKE_BUILD_TYPE Debug)\" before debugging.",
+  "config.templateUrl": "Where the project template is downloaded from. Without internet the extension uses its bundled copy."
+}
