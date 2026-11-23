@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2
+
+- Publisher is now `hcl1981` (as in the VS Code Marketplace). The extension ID
+  changes to `hcl1981.pbcplus`; uninstall the old `pbcplus.pbcplus` once.
+
 ## 0.2.1
 
 - Works in Restricted Mode: a new project and the editor help are available;

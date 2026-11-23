@@ -40,7 +40,7 @@ extension, which takes care of the SDK, the compiler and flashing the PBC+.
    [releases](https://github.com/hcl1981/pbc-vscode/releases/latest).
 2. In VS Code open **Extensions**, click **…** at the top and choose
    **Install from VSIX…**. Or drag the file onto the extensions list. Or in a
-   terminal: `code --install-extension pbcplus-0.2.1.vsix`
+   terminal: `code --install-extension pbcplus-0.2.2.vsix`
    The *Raspberry Pi Pico* extension is installed along with it; this needs
    internet once.
 3. [Install PBConPC](https://github.com/hcl1981/PBConPC/releases/latest). On

@@ -42,7 +42,7 @@ auf, die sich um SDK, Compiler und das Aufspielen auf den PBC+ kümmert.
 2. In VS Code links die **Erweiterungen** öffnen, oben auf **…** klicken und
    **Aus VSIX installieren…** wählen. Oder die Datei in die Liste der
    Erweiterungen ziehen. Oder im Terminal:
-   `code --install-extension pbcplus-0.2.1.vsix`
+   `code --install-extension pbcplus-0.2.2.vsix`
    Die Erweiterung *Raspberry Pi Pico* kommt dabei automatisch mit; dafür
    braucht es einmal Internet.
 3. [PBConPC installieren](https://pbcplus.de/geraet/am-pc/). Unter Linux mit
